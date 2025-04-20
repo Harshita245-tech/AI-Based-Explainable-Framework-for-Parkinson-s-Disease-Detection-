@@ -3,11 +3,20 @@ import numpy as np
 import joblib
 import tensorflow as tf
 
-# Load model and scaler
+# Load trained model and scaler
 model = tf.keras.models.load_model("shap_attention_model.h5")
 scaler = joblib.load("parkinsons_scaler.pkl")
 
-# Feature names
+# SHAP feature weights (same as during training)
+shap_weights = np.array([
+    0.91, 0.87, 0.84, 0.95, 0.78, 0.88,
+    0.86, 0.82, 0.89, 0.75, 0.83, 0.81,
+    0.80, 0.85, 0.72, 0.90, 0.94, 0.88,
+    0.96, 0.92, 0.89, 0.93
+])
+shap_weights = shap_weights / np.max(shap_weights)
+
+# Feature list
 features = [
     'MDVP:Fo(Hz)', 'MDVP:Fhi(Hz)', 'MDVP:Flo(Hz)',
     'MDVP:Jitter(%)', 'MDVP:Jitter(Abs)', 'MDVP:RAP',
@@ -17,7 +26,7 @@ features = [
     'RPDE', 'DFA', 'spread1', 'spread2', 'D2', 'PPE'
 ]
 
-# Sample test cases
+# Parkinson and Healthy test cases
 sample_pd = [
     119.992, 157.302, 74.997, 0.00784, 0.00007, 0.00370,
     0.00554, 0.01109, 0.04374, 0.426, 0.02182, 0.03130,
@@ -32,13 +41,13 @@ sample_healthy = [
     -6.199505, 0.196594, 1.405554, 0.084280
 ]
 
-# UI
-st.title("🎙️ Parkinson's Disease Detection (SHAP-Attention Enhanced)")
-st.markdown("Enter the 22 voice features below or use sidebar autofill options.")
+# Streamlit UI
+st.set_page_config(page_title="SHAP-Attention Parkinson’s Detector", layout="centered")
+st.title("🎙️ Parkinson's Disease Detection\n(SHAP-Attention Enhanced)")
+st.markdown("Enter 22 voice biomarkers or use **auto-fill** buttons in the sidebar.")
 
-# Sidebar buttons
+# Sidebar autofill
 autofill = [0.0] * len(features)
-
 if st.sidebar.button("🧠 Auto-Fill Parkinson's Sample"):
     autofill = sample_pd
 elif st.sidebar.button("✅ Auto-Fill Healthy Sample"):
@@ -56,10 +65,14 @@ with st.form("input_form"):
 if submitted:
     input_array = np.array(input_data).reshape(1, -1)
     input_scaled = scaler.transform(input_array)
-    # If SHAP weights are saved, re-apply them. Else use model directly.
-    prediction = model.predict(input_scaled)[0][0]
+    input_weighted = input_scaled * shap_weights  # Apply SHAP reweighting
+    prob = model.predict(input_weighted)[0][0]
 
-    if prediction > 0.5:
-        st.error("🧠 Parkinson's Disease Detected")
+    st.markdown("### 🔍 Model Confidence Score")
+    st.progress(float(prob))
+    st.code(f"🧠 Parkinson's Probability: {prob:.2%}\n✅ Healthy Probability: {(1 - prob):.2%}")
+
+    if prob > 0.5:
+        st.error(f"🧠 Parkinson’s Disease Detected (Confidence: {prob:.2%})")
     else:
-        st.success("✅ Healthy Voice Detected")
+        st.success(f"✅ Healthy Voice Detected (Confidence: {(1 - prob):.2%})")
